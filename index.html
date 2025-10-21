@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vue.js Hotel Booking System</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="styles/style.css">
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <header class="app-header">
+                <h1>🏨 Hotel Booking Manager</h1>
+                <p>Manage room bookings and availability</p>
+            </header>
+
+            <!-- Notification Message -->
+            <div v-if="message" :class="['notification', messageType]">
+                {{ message }}
+                <button @click="message = ''" class="close-btn">&times;</button>
+            </div>
+
+            <!-- Booking Form Section -->
+            <section class="form-section">
+                <h2>{{ isEditing ? '✏️ Edit Booking' : '➕ Create New Booking' }}</h2>
+                <form @submit.prevent="saveBooking" class="booking-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="guestName">Guest Name:</label>
+                            <input type="text" id="guestName" v-model="currentBooking.guestName" required 
+                                   placeholder="Enter guest full name">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="guestEmail">Email:</label>
+                            <input type="email" id="guestEmail" v-model="currentBooking.guestEmail" required 
+                                   placeholder="Enter guest email">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="guestPhone">Phone:</label>
+                            <input type="tel" id="guestPhone" v-model="currentBooking.guestPhone" required 
+                                   placeholder="Enter phone number">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="roomNumber">Room Number:</label>
+                            <select id="roomNumber" v-model="currentBooking.roomNumber" required>
+                                <option value="" disabled>Select Room</option>
+                                <option v-for="room in availableRooms" :key="room" :value="room">
+                                    Room {{ room }}
+                                </option>
+                                <option v-if="availableRooms.length === 0" disabled>
+                                    No rooms available
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="checkIn">Check-in Date:</label>
+                            <input type="date" id="checkIn" v-model="currentBooking.checkIn" required 
+                                   :min="today">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="checkOut">Check-out Date:</label>
+                            <input type="date" id="checkOut" v-model="currentBooking.checkOut" required 
+                                   :min="currentBooking.checkIn || today">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="specialRequests">Special Requests:</label>
+                        <textarea id="specialRequests" v-model="currentBooking.specialRequests" 
+                                  placeholder="Any special requests or notes..."
+                                  rows="3"></textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            {{ isEditing ? 'Update Booking' : 'Create Booking' }}
+                        </button>
+                        <button type="button" v-if="isEditing" @click="cancelEdit" class="btn btn-secondary">
+                            Cancel
+                        </button>
+                        <button type="button" @click="resetForm" class="btn btn-outline">
+                            Clear Form
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Bookings List Section -->
+            <section class="bookings-section">
+                <div class="section-header">
+                    <h2>📋 Current Bookings ({{ bookings.length }})</h2>
+                    <div class="filters">
+                        <div class="search-box">
+                            <input type="text" v-model="searchTerm" placeholder="Search bookings...">
+                        </div>
+                        <div class="filter-group">
+                            <select v-model="statusFilter" class="filter-select">
+                                <option value="">All Status</option>
+                                <option value="checked-in">Checked In</option>
+                                <option value="checked-out">Checked Out</option>
+                                <option value="upcoming">Upcoming</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="stats-cards">
+                    <div class="stat-card">
+                        <div class="stat-number">{{ totalRooms }}</div>
+                        <div class="stat-label">Total Rooms</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{{ availableRooms.length }}</div>
+                        <div class="stat-label">Available Rooms</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{{ activeBookings.length }}</div>
+                        <div class="stat-label">Active Bookings</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">{{ upcomingBookings.length }}</div>
+                        <div class="stat-label">Upcoming</div>
+                    </div>
+                </div>
+
+                <!-- Empty State -->
+                <div v-if="filteredBookings.length === 0" class="empty-state">
+                    <div v-if="bookings.length === 0">
+                        <h3>No bookings yet</h3>
+                        <p>Create your first booking using the form above!</p>
+                    </div>
+                    <div v-else>
+                        <h3>No bookings found</h3>
+                        <p>Try adjusting your search or filters</p>
+                    </div>
+                </div>
+
+                <!-- Bookings Table -->
+                <div v-else class="bookings-table-container">
+                    <table class="bookings-table">
+                        <thead>
+                            <tr>
+                                <th @click="sortBy('guestName')" class="sortable">
+                                    Guest 
+                                    <span v-if="sortField === 'guestName'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+                                </th>
+                                <th @click="sortBy('roomNumber')" class="sortable">
+                                    Room
+                                    <span v-if="sortField === 'roomNumber'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+                                </th>
+                                <th @click="sortBy('checkIn')" class="sortable">
+                                    Check-in
+                                    <span v-if="sortField === 'checkIn'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+                                </th>
+                                <th @click="sortBy('checkOut')" class="sortable">
+                                    Check-out
+                                    <span v-if="sortField === 'checkOut'">{{ sortDirection === 'asc' ? '↑' : '↓' }}</span>
+                                </th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(booking, index) in filteredBookings" :key="booking.id" 
+                                :class="getBookingRowClass(booking)">
+                                <td>
+                                    <div class="guest-info">
+                                        <strong>{{ booking.guestName }}</strong>
+                                        <small>{{ booking.guestEmail }}</small>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="room-badge">Room {{ booking.roomNumber }}</span>
+                                </td>
+                                <td>{{ formatDate(booking.checkIn) }}</td>
+                                <td>{{ formatDate(booking.checkOut) }}</td>
+                                <td>
+                                    <span :class="['status-badge', booking.status]">
+                                        {{ formatStatus(booking.status) }}
+                                    </span>
+                                </td>
+                                <td class="actions">
+                                    <button v-if="booking.status === 'upcoming'" 
+                                            @click="checkIn(booking.id)" 
+                                            class="btn btn-success"
+                                            title="Check in guest">
+                                        ✅ Check In
+                                    </button>
+                                    <button v-if="booking.status === 'checked-in'" 
+                                            @click="checkOut(booking.id)" 
+                                            class="btn btn-warning"
+                                            title="Check out guest">
+                                        🏁 Check Out
+                                    </button>
+                                    <button @click="editBooking(getOriginalIndex(index))" 
+                                            class="btn btn-edit" 
+                                            title="Edit booking">
+                                        ✏️ Edit
+                                    </button>
+                                    <button @click="deleteBooking(getOriginalIndex(index))" 
+                                            class="btn btn-delete" 
+                                            title="Delete booking">
+                                        🗑️ Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Footer -->
+            <footer class="app-footer">
+                <p>Hotel Booking System</p>
+            </footer>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
